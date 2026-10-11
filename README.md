@@ -297,33 +297,6 @@ kubectl get endpoints api-svc
 
 ---
 
-## Récapitulatif des exigences
-
-| Exigence | Statut | Figure |
-|---|---|---|
-| E1 — Namespace dédié | ✅ | Fig. 1 |
-| E2 — API : 3 réplicas, tag explicite | ✅ | Fig. 2, 3 |
-| E3 — Frontend : 2 réplicas | ✅ | Fig. 4 |
-| E4 — Labels `app` + `tier` cohérents | ✅ | manifestes |
-| E5 — Services ClusterIP | ✅ | Fig. 5, 6 |
-| E6 — DNS interne frontend → API | ✅ | Fig. 7 |
-| E7 — Ingress pour les 2 hôtes | ✅ | Fig. 8, 9 |
-| E8 — Manifestes YAML versionnés | ✅ | dépôt Git |
-| E9 — Rolling update sans coupure | ✅ | Fig. 10, 11, 12 |
-| E10 — Diagnostic de 2 pannes | ✅ | Fig. 14 → 18 |
-
----
-
-## Difficultés rencontrées et enseignements
-
-- **Kubeconfig k3s** inaccessible en tant qu'utilisateur non-root : résolu par `export KUBECONFIG=$HOME/.kube/config` dans `~/.bashrc`.
-- **Fichier `hosts` Windows** non modifiable via Bloc-notes : contourné avec `Add-Content` en PowerShell administrateur.
-- **Erreur d'indentation YAML** sur le sélecteur du Service (`spec.app` invalide) : toujours vérifier avec `kubectl apply --dry-run=client`.
-
-**Enseignements** : cohérence labels/sélecteurs indispensable, rôle central du DNS interne, intérêt des manifestes déclaratifs versionnés, valeur du rollout/rollback pour la disponibilité, et importance de la démarche méthodique de diagnostic (`get` → `describe` → `events`).
-
----
-
 ## Conclusion
 
 Ce mini-projet met en pratique les fondations de Kubernetes avec k3s : déploiement déclaratif, réplication, découverte de services, exposition HTTP par Ingress, mise à jour progressive et diagnostic méthodique de pannes. L'ensemble est entièrement reproductible grâce aux manifestes et aux preuves versionnés dans ce dépôt.
