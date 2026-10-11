@@ -2,26 +2,35 @@
 
 ## 1. Présentation du projet
 
-Ce mini-projet a pour objectif de déployer une application web composée de deux services sur un cluster Kubernetes k3s à trois nœuds.
+Ce mini-projet déploie une application web à deux niveaux sur un cluster Kubernetes k3s composé d'un nœud control plane et de deux workers.
 
 L'application comprend :
-- **Frontend :** interface web basée sur NGINX.
-- **API :** service REST basé sur Podinfo, qui renvoie des informations au format JSON.
-- **Services ClusterIP :** communication interne entre les composants.
-- **Ingress Traefik :** point d'entrée HTTP permettant d'accéder au frontend et à l'API par des noms d'hôte.
 
-Le déploiement est réalisé de manière déclarative à l'aide de manifestes YAML versionnés dans Git.
+- **Frontend** : interface web basée sur **NGINX** (`nginx:alpine`), 2 réplicas.
+- **API** : service REST **Podinfo** (`ghcr.io/stefanprodan/podinfo:6.5.4` puis `6.6.0`), 3 réplicas, port 9898.
+- **Services ClusterIP** : communication interne par nom DNS.
+- **Ingress Traefik** : point d'entrée HTTP unique pour `web.k3s.local` et `api.k3s.local`.
+
+Le déploiement est **100 % déclaratif** : toutes les ressources sont décrites dans des manifestes YAML versionnés dans Git.
+
+- **Étudiante** : Arij Belaid
+- **Namespace** : `mp1-arij`
+- **Dépôt GitHub** : <https://github.com/arijbelaid/mini_projet1>
+
+---
 
 ## 2. Objectifs pédagogiques
 
-- Déployer des applications avec des Deployments Kubernetes.
-- Gérer les réplicas et les labels.
-- Exposer les applications avec des Services ClusterIP.
-- Tester la résolution DNS interne de Kubernetes.
-- Configurer un Ingress Traefik pour plusieurs noms d'hôte.
-- Effectuer une mise à jour progressive (*Rolling Update*) et un rollback.
-- Diagnostiquer et corriger des pannes volontaires.
-- Versionner les manifestes et les preuves de validation dans GitHub.
+- Déployer des applications avec des **Deployments** Kubernetes.
+- Gérer les **réplicas** et les **labels**.
+- Exposer les applications avec des **Services ClusterIP**.
+- Tester la **résolution DNS interne** de Kubernetes.
+- Configurer un **Ingress Traefik** pour plusieurs noms d'hôte.
+- Effectuer une **mise à jour progressive (Rolling Update)** et un **rollback**.
+- **Diagnostiquer** et corriger des pannes volontaires.
+- Versionner les manifestes et les preuves dans **GitHub**.
+
+---
 
 ## 3. Architecture
 
@@ -49,40 +58,52 @@ Le déploiement est réalisé de manière déclarative à l'aide de manifestes Y
 
 | Composant | Technologie |
 |---|---|
-| Orchestration | Kubernetes k3s |
+| Orchestration | Kubernetes k3s (v1.36) |
 | Machines virtuelles | VMware Workstation |
 | Système des nœuds | Ubuntu Server |
-| Frontend | NGINX |
-| API | Podinfo |
+| Frontend | `nginx:alpine` |
+| API | `ghcr.io/stefanprodan/podinfo` |
 | Routage HTTP | Traefik Ingress Controller |
 | Configuration | YAML |
-| Versionnement | Git et GitHub |
+| Versionnement | Git + GitHub |
+
+### Nœuds du cluster
+
+| Nœud | Rôle | IP |
+|---|---|---|
+| master | control-plane | 192.168.159.10 |
+| worker1 | agent | 192.168.159.11 |
+| worker2 | agent | 192.168.159.12 |
+
+---
 
 ## 4. Structure du dépôt
 
 ```text
-mini-projet-1-k3s/
+mini_projet1/
 ├── manifests/
-│   ├── namespace.yaml
 │   ├── api-deployment.yaml
 │   ├── frontend-deployment.yaml
-│   ├── api-service.yaml
-│   ├── frontend-service.yaml
+│   ├── api-svc.yaml
+│   ├── frontend-svc.yaml
 │   └── ingress.yaml
 ├── screenshots/
-└── README.md
+│   └── ... (captures d'écran)
+├── rapport/
+│   └── Mini_projet1.pdf
+├── README.md
+└── .gitignore
 ```
 
-Le dossier `manifests/` contient les ressources Kubernetes. Le dossier `screenshots/` regroupe les captures d'écran démontrant les tests et les résultats obtenus.
+---
 
 ## 5. Prérequis
 
-- Un cluster k3s constitué d'un nœud control plane et de deux workers.
-- Les trois nœuds en état `Ready`.
-- Traefik installé et opérationnel.
-- Un accès SSH au serveur k3s.
-- Git installé et un dépôt GitHub.
-- Un accès réseau entre le poste Windows et les nœuds Kubernetes.
+- Cluster k3s à 3 nœuds en état `Ready`.
+- Traefik installé et opérationnel (`kube-system`).
+- Accès SSH à la VM master.
+- `kubectl` configuré sur la VM master.
+- Git et un dépôt GitHub.
 
 Vérification du cluster :
 
@@ -91,249 +112,303 @@ kubectl get nodes -o wide
 kubectl get pods -A
 ```
 
+---
+
 ## 6. Déploiement
 
 ### 6.1 Créer le namespace
 
-Toutes les ressources de l'application doivent être placées dans un namespace dédié au binôme.
-
 ```bash
-kubectl apply -f manifests/namespace.yaml
-kubectl get namespaces
+kubectl create namespace mp1-arij
+kubectl config set-context --current --namespace=mp1-arij
 ```
 
-### 6.2 Déployer l'API
+![Namespace créé](screenshots/02-namespace-created.png)
 
-L'API utilise trois réplicas et une version d'image explicitement définie dans le manifeste.
+### 6.2 Déployer l'API (3 réplicas)
 
 ```bash
 kubectl apply -f manifests/api-deployment.yaml
-kubectl get deployment -n mon-binome
-kubectl get pods -n mon-binome -o wide
+kubectl get deployment api -n mp1-arij
+kubectl get pods -n mp1-arij -o wide
 ```
 
-Remplacer `mon-binome` par le nom réel du namespace utilisé.
+![Déploiement API avec 3 réplicas](screenshots/03-api-deployment-3-replicas.png)
 
-### 6.3 Déployer le frontend
+Répartition des pods API sur les 3 nœuds (décision du **scheduler kube-scheduler**) :
 
-Le frontend NGINX utilise deux réplicas.
+![Répartition des pods API](screenshots/04-api-pods-distribution.png)
+
+### 6.3 Déployer le frontend (2 réplicas)
 
 ```bash
 kubectl apply -f manifests/frontend-deployment.yaml
-kubectl get deployment -n mon-binome
-kubectl get pods -n mon-binome -o wide
+kubectl get deployment frontend -n mp1-arij
+kubectl get pods -n mp1-arij -o wide
 ```
 
-### 6.4 Créer les Services
+![Déploiement frontend avec 2 réplicas](screenshots/05-frontend-deployment-2-replicas.png)
 
-Les deux composants sont exposés à l'intérieur du cluster à l'aide de Services de type `ClusterIP`.
+### 6.4 Créer les Services ClusterIP
 
 ```bash
-kubectl apply -f manifests/api-service.yaml
-kubectl apply -f manifests/frontend-service.yaml
-kubectl get services -n mon-binome
-kubectl get endpoints -n mon-binome
+kubectl apply -f manifests/api-svc.yaml
+kubectl apply -f manifests/frontend-svc.yaml
+kubectl get svc -n mp1-arij
 ```
 
-### 6.5 Vérifier la communication interne
+![Services ClusterIP](screenshots/06-services-clusterip.png)
 
-Depuis un Pod du frontend, tester l'API avec le nom DNS du Service, sans utiliser directement son adresse IP.
-
-Exemple de requête :
+Vérification des endpoints associés :
 
 ```bash
-kubectl exec -n mon-binome NOM_DU_POD_FRONTEND -- \
-  wget -qO- http://api-svc:9898
+kubectl get endpoints -n mp1-arij
 ```
 
-Le nom `api-svc` doit correspondre au Service défini dans le manifeste. Le résultat attendu est une réponse HTTP de l'API.
+![Endpoints du Service API](screenshots/07-api-endpoints.png)
 
-### 6.6 Configurer l'Ingress
+### 6.5 Vérifier la communication interne par DNS
 
-Appliquer le manifeste Ingress :
+Depuis un pod frontend, appel de l'API par son nom de Service :
+
+```bash
+kubectl exec -it <pod-frontend> -- wget -qO- http://api-svc:9898/version
+```
+
+Résolution DNS complète :
+
+```bash
+kubectl exec -it <pod-frontend> -- nslookup api-svc.mp1-arij.svc.cluster.local
+```
+
+![Test DNS interne frontend → API](screenshots/08-frontend-api-dns-test.png)
+
+### 6.6 Configurer l'Ingress Traefik
 
 ```bash
 kubectl apply -f manifests/ingress.yaml
-kubectl get ingress -n mon-binome
-kubectl describe ingress -n mon-binome
+kubectl get ingress -n mp1-arij
+kubectl describe ingress app-ingress -n mp1-arij
 ```
 
-Les deux noms d'hôte utilisés sont :
+![Règles Ingress](screenshots/09-ingress-rules.png)
 
-- `web.k3s.local` : accès au frontend.
-- `api.k3s.local` : accès à l'API.
-
-Sur Windows, ajouter au fichier `C:\Windows\System32\drivers\etc\hosts`, en utilisant un éditeur lancé en administrateur, une ligne avec l'adresse IP d'un nœud accessible :
+Côté Windows, ajout dans `C:\Windows\System32\drivers\etc\hosts` (éditeur en administrateur) :
 
 ```text
-IP_DU_NOEUD web.k3s.local api.k3s.local
+192.168.159.10 web.k3s.local api.k3s.local
 ```
 
-Remplacer `IP_DU_NOEUD` par l'adresse IP réelle du nœud.
-
-Tester ensuite depuis PowerShell :
+Test depuis PowerShell :
 
 ```powershell
-curl.exe -i http://web.k3s.local
-curl.exe -i http://api.k3s.local
+curl.exe http://web.k3s.local
+curl.exe http://api.k3s.local/version
 ```
+
+![Test via Traefik Ingress](screenshots/10-traefik-ingress-test.png)
+
+---
 
 ## 7. Mise à jour progressive et rollback
 
 ### 7.1 Préparer le test
 
-Avant la mise à jour, relever la version actuelle de l'API et lancer une boucle de requêtes depuis PowerShell :
+Boucle de requêtes pour mesurer la disponibilité pendant le rollout :
 
 ```powershell
-while ($true) {
-    curl.exe -s -o NUL -w "%{http_code}`n" http://api.k3s.local
-    Start-Sleep -Milliseconds 500
-}
+while ($true) { curl.exe -s http://api.k3s.local/version; Write-Host ""; Start-Sleep -Milliseconds 500 }
 ```
 
-Cette commande affiche le code HTTP de chaque requête. Interrompre la boucle avec `Ctrl + C`.
+### 7.2 Mettre à jour l'API (6.5.4 → 6.6.0)
 
-### 7.2 Mettre à jour l'API
-
-Modifier le tag de l'image dans `manifests/api-deployment.yaml` pour utiliser la version plus récente retenue pour le projet, puis appliquer le manifeste :
+Modification du tag d'image dans `manifests/api-deployment.yaml`, puis :
 
 ```bash
 kubectl apply -f manifests/api-deployment.yaml
-kubectl rollout status deployment/api -n mon-binome
-kubectl get replicasets -n mon-binome
-kubectl get pods -n mon-binome
+kubectl rollout status deployment/api -n mp1-arij
+kubectl get rs -l app=api -n mp1-arij
 ```
 
-Pendant l'opération, vérifier les réponses HTTP de la boucle. Un test sans interruption doit montrer que les requêtes continuent de réussir pendant le remplacement progressif des Pods.
+**Aucune coupure** : les requêtes continuent de répondre pendant le remplacement progressif.
 
-### 7.3 Effectuer un rollback
+![Rolling update sans coupure](screenshots/13-rolling-update-no-downtime.png)
 
-Pour revenir à la révision précédente du Deployment :
+Deux ReplicaSets coexistent après la mise à jour (ancien à 0, nouveau à 3) :
+
+![ReplicaSets après la mise à jour](screenshots/14-replicasets-after-update.png)
+
+Nouvelle version en production :
+
+![Version API après mise à jour](screenshots/15-api-version-after-update.png)
+
+### 7.3 Rollback
 
 ```bash
-kubectl rollout undo deployment/api -n mon-binome
-kubectl rollout status deployment/api -n mon-binome
-kubectl rollout history deployment/api -n mon-binome
+kubectl rollout undo deployment/api -n mp1-arij
+kubectl rollout status deployment/api -n mp1-arij
 ```
 
-Vérifier ensuite la version de l'API et l'état des Pods.
+Retour à la révision précédente :
+
+![Rollback terminé](screenshots/16-rollback-completed.png)
+
+---
 
 ## 8. Diagnostic des pannes
 
 ### 8.1 Panne A — Tag d'image inexistant
 
-**Injection :** remplacer temporairement le tag valide par un tag inexistant dans le manifeste de l'API.
+**Injection** : tag remplacé par `6.5.999` dans le Deployment.
 
-**Observations :**
+**Observation** :
 
 ```bash
-kubectl get pods -n mon-binome
-kubectl describe pod NOM_DU_POD -n mon-binome
-kubectl get events -n mon-binome --sort-by=.metadata.creationTimestamp
+kubectl get pods -n mp1-arij
+kubectl describe pod <nom-pod-en-erreur> -n mp1-arij
+kubectl get events -n mp1-arij --sort-by=.metadata.creationTimestamp
 ```
 
-**Cause attendue :** l'image demandée ne peut pas être récupérée depuis le registre, ce qui peut provoquer un état `ErrImagePull` ou `ImagePullBackOff`.
+Symptômes : pod en `ErrImagePull` puis `ImagePullBackOff`.
 
-**Correction :** restaurer le tag valide, réappliquer le manifeste et vérifier le retour des trois réplicas à l'état opérationnel.
+![Erreur de pull d'image](screenshots/17-image-pull-error.png)
+
+Events détaillés : `Failed to pull image "ghcr.io/stefanprodan/podinfo:6.5.999": not found`.
+
+![Diagnostic via events](screenshots/18-diagnostic-events.png)
+
+**Cause racine** : tag inexistant dans le registre.
+
+**Correction** : retour au tag `6.6.0`, `kubectl apply`, puis rollouts terminés.
+
+![Correction de la panne image](screenshots/19-image-error-fixed.png)
 
 ### 8.2 Panne B — Sélecteur de Service incorrect
 
-**Injection :** modifier temporairement le sélecteur du Service API afin qu'il ne corresponde plus aux labels des Pods API.
+**Injection** : sélecteur du Service modifié en `app: api-bad` (ne correspond à aucun pod).
 
-**Diagnostic :**
+**Diagnostic** :
 
 ```bash
-kubectl get services -n mon-binome
-kubectl get pods -n mon-binome --show-labels
-kubectl get endpoints api-svc -n mon-binome
-kubectl describe service api-svc -n mon-binome
+kubectl get svc -n mp1-arij
+kubectl get endpoints api-svc -n mp1-arij
+kubectl describe svc api-svc -n mp1-arij
+kubectl get pods -n mp1-arij --show-labels
 ```
 
-**Symptôme attendu :** le Service ne possède plus d'endpoints correspondant aux Pods API et les requêtes peuvent échouer.
+Symptômes :
 
-**Correction :** rétablir les labels attendus dans le sélecteur du Service, réappliquer le manifeste et vérifier que les endpoints sont de nouveau présents.
+- `Endpoints: <none>` pour `api-svc`
+- `wget: can't connect to remote host`
+- `curl.exe http://api.k3s.local/version` → `503 Service Unavailable`
 
-Les pannes sont injectées uniquement dans le cadre du test, puis corrigées. Les résultats observés et la cause racine doivent être consignés dans le compte rendu.
+![Erreur de sélecteur de Service](screenshots/20-service-selector-error.png)
 
-## 9. Captures d'écran
+**Cause racine** : le sélecteur ne correspond à aucun label de pod.
 
-Les preuves du projet sont regroupées dans le dossier `screenshots/`.
+**Correction** : retour de `app: api` + `tier: backend`, `kubectl apply`, endpoints restaurés.
+
+![Sélecteur corrigé](screenshots/21-service-selector-corrected.png)
+
+---
+
+## 9. Captures d'écran — Synthèse
 
 | Capture | Résultat démontré |
 |---|---|
-| `01-cluster-nodes-ready.png` | Les nœuds du cluster sont prêts |
-| `02-namespace-created.png` | Namespace dédié |
-| `03-api-deployment-3-replicas.png` | Trois réplicas API |
-| `04-api-pods-distribution.png` | État et répartition des Pods API |
-| `05-frontend-deployment-2-replicas.png` | Deux réplicas frontend |
-| `06-services-clusterip.png` | Services internes |
+| `02-namespace-created.png` | Namespace `mp1-arij` créé |
+| `03-api-deployment-3-replicas.png` | Deployment API — 3 réplicas |
+| `04-api-pods-distribution.png` | Répartition des pods API sur les 3 nœuds |
+| `05-frontend-deployment-2-replicas.png` | Deployment frontend — 2 réplicas |
+| `06-services-clusterip.png` | Services ClusterIP |
 | `07-api-endpoints.png` | Endpoints du Service API |
-| `08-frontend-api-dns-test.png` | Communication interne par DNS |
+| `08-frontend-api-dns-test.png` | Communication interne via DNS |
 | `09-ingress-rules.png` | Règles Ingress |
-| `10-traefik-ingress-test.png` | Test de l'API via Ingress |
-| `11-frontend-access.png` | Accès au frontend |
-| `12-api-version-before-update.png` | Version initiale |
-| `13-rolling-update-no-downtime.png` | Requêtes pendant la mise à jour |
-| `14-replicasets-after-update.png` | ReplicaSets avant/après |
-| `15-api-version-after-update.png` | Nouvelle version |
-| `16-rollback-completed.png` | Retour à la révision précédente |
-| `17-image-pull-error.png` | Symptômes du tag inexistant |
-| `18-diagnostic-events.png` | Événements et diagnostic |
-| `19-image-error-fixed.png` | Rétablissement de l'API |
-| `20-service-selector-error.png` | Endpoints absents après l'erreur |
-| `21-service-selector-corrected.png` | Endpoints restaurés |
-| `22-git-repository.png` | Organisation du dépôt GitHub |
+| `10-traefik-ingress-test.png` | Test via Ingress Traefik |
+| `13-rolling-update-no-downtime.png` | Mise à jour sans coupure |
+| `14-replicasets-after-update.png` | ReplicaSets après mise à jour |
+| `15-api-version-after-update.png` | Version 6.6.0 en production |
+| `16-rollback-completed.png` | Rollback réussi |
+| `17-image-pull-error.png` | Panne A — ImagePullBackOff |
+| `18-diagnostic-events.png` | Events de la panne A |
+| `19-image-error-fixed.png` | Panne A corrigée |
+| `20-service-selector-error.png` | Panne B — Endpoints vides |
+| `21-service-selector-corrected.png` | Panne B corrigée |
 
-Ne conserver dans ce tableau que les captures réellement réalisées.
+---
 
 ## 10. Réponses aux questions pédagogiques
 
 ### Étape 0 — Pourquoi un namespace ?
 
-Un namespace permet d'isoler logiquement les ressources d'un projet dans un même cluster. Il facilite l'organisation, l'administration et la séparation des ressources entre les binômes.
+Un namespace isole logiquement les ressources d'un projet dans un cluster partagé. Il permet :
 
-### Étape 1 — Répartition des Pods API
+- d'éviter les collisions de noms entre projets,
+- d'appliquer des quotas et du RBAC,
+- de nettoyer facilement (`kubectl delete namespace mp1-arij`).
 
-Le scheduler Kubernetes choisit les nœuds sur lesquels placer les Pods en fonction des ressources disponibles, des contraintes et des règles de planification. La répartition réelle doit être vérifiée avec `kubectl get pods -o wide`.
+### Étape 1 — Répartition des pods API
 
-### Étape 2 — Pourquoi des labels distincts ?
+Les pods sont placés par le **scheduler kube-scheduler**, qui choisit les nœuds selon les ressources disponibles, les contraintes (`affinity`, `taints/tolerations`) et l'équilibrage. Ici : 1 pod par nœud.
 
-Les labels permettent d'identifier les ressources et les sélecteurs des Services. Des labels mal choisis ou identiques dans les mauvais contextes peuvent entraîner une sélection involontaire de Pods.
+### Étape 2 — Labels distincts
+
+Si les deux Deployments partageaient les mêmes labels, leurs ReplicaSets se disputeraient les mêmes pods et les Services pourraient router vers les mauvais backends. Les labels `app` et `tier` évitent cette ambiguïté.
 
 ### Étape 3 — DNS et endpoints
 
-Un Service possède un nom DNS interne. Dans le même namespace, il peut être appelé par son nom court, par exemple `api-svc`. Son nom DNS complet suit la forme :
+Nom DNS complet d'un Service :
 
-`api-svc.mon-binome.svc.cluster.local`
+```text
+<service>.<namespace>.svc.cluster.local
+api-svc.mp1-arij.svc.cluster.local
+```
 
-Les endpoints indiquent les destinations auxquelles le Service peut acheminer le trafic. Leur absence peut révéler un sélecteur incorrect ou des Pods non prêts.
+`kubectl get endpoints` liste les IP:port réelles des pods ciblés par le Service. Un endpoint vide (`<none>`) révèle un sélecteur incorrect ou des pods non prêts.
 
 ### Étape 4 — Pourquoi un Ingress ?
 
-Un Ingress permet de centraliser le routage HTTP par nom d'hôte ou chemin vers plusieurs Services. Il évite de devoir exposer séparément chaque application avec un NodePort. Le contrôleur Traefik applique les règles configurées.
+L'Ingress centralise le routage HTTP par nom d'hôte ou chemin vers plusieurs Services. Contrairement aux NodePort (qui exposent un port par Service), il offre :
+
+- un point d'entrée unique (80/443),
+- la terminaison TLS centralisée,
+- un routage plus propre et plus évolutif.
 
 ### Étape 5 — ReplicaSets et rollback
 
-Un Rolling Update remplace progressivement les Pods de l'ancienne version par ceux de la nouvelle version, selon la stratégie de mise à jour du Deployment. Les ReplicaSets conservent l'historique des révisions et peuvent permettre un retour en arrière. La commande `kubectl rollout undo` déclenche ce rollback.
+Après une mise à jour, **2 ReplicaSets** coexistent : l'ancien (scalé à 0) et le nouveau (scalé à 3). L'ancien est conservé pour permettre le rollback (`kubectl rollout undo deployment/api`) et garder l'historique des révisions.
 
 ### Étape 6 — Diagnostic
 
-Le diagnostic repose sur une démarche progressive : observer l'état des Pods, examiner les détails et événements, vérifier les labels et les endpoints, puis corriger la cause racine. Les symptômes et la correction effectivement observés doivent être décrits dans le compte rendu.
+Démarche progressive :
+
+1. **Observer** l'état global : `kubectl get pods`, `kubectl get endpoints`.
+2. **Décrire** la ressource en erreur : `kubectl describe pod/svc`.
+3. **Consulter les events** : `kubectl get events`.
+4. **Comparer** labels des pods et sélecteurs des Services.
+5. **Corriger** la cause racine puis revérifier.
+
+---
 
 ## 11. Difficultés rencontrées et enseignements
 
-Ce mini-projet permet de comprendre l'importance de la cohérence entre les labels des Pods et les sélecteurs des Services, ainsi que le rôle du DNS interne dans la communication entre composants. Il montre également l'intérêt des manifestes déclaratifs versionnés, des mises à jour progressives et des outils de diagnostic Kubernetes pour identifier et corriger les erreurs.
+- **Kubeconfig k3s inaccessible** depuis l'utilisateur non-root : résolu en définissant `export KUBECONFIG=$HOME/.kube/config` dans `~/.bashrc`.
+- **Fichier hosts Windows** non modifiable via le Bloc-notes (permissions) : contourné avec `Add-Content` en PowerShell administrateur.
+- **Erreur d'indentation YAML** sur le sélecteur du Service (`spec.app` invalide) : rappel de toujours faire `kubectl apply --dry-run=client` avant d'appliquer.
 
-**À compléter avant la remise :** ajouter les difficultés réellement rencontrées, les commandes utilisées et les résultats observés pendant la séance.
+**Enseignements** : cohérence labels / sélecteurs, rôle du DNS interne, intérêt des manifestes déclaratifs, valeur du rollout/rollback pour la disponibilité, et importance de la démarche méthodique de diagnostic (`get` → `describe` → `events`).
+
+---
 
 ## 12. Conclusion
 
-Ce projet met en pratique les fondations de Kubernetes avec k3s : déploiement déclaratif, réplication, découverte de services, exposition HTTP avec Ingress, mise à jour progressive et diagnostic. Les manifestes et les captures permettent de documenter les étapes et de faciliter la reproduction du déploiement.
+Ce mini-projet met en pratique les fondations de Kubernetes avec k3s : déploiement déclaratif, réplication, découverte de services, exposition HTTP par Ingress, mise à jour progressive et diagnostic de pannes. Tous les manifestes et preuves sont versionnés dans ce dépôt Git, rendant le déploiement entièrement reproductible.
 
-## 13. Auteur(s)
+---
 
-- **Étudiante :** Arij Belaid
+## 13. Auteur
 
-- **Formation :** Master Professionnel DevOps & Cloud
-- **Établissement :** ISET Tozeur
-- **Module :** Orchestration de conteneurs avec Kubernetes (k3s)
+- **Étudiante** : Arij Belaid
+- **Formation** : Master Professionnel DevOps & Cloud
+- **Établissement** : ISET Tozeur
+- **Module** : Orchestration de conteneurs avec Kubernetes (k3s)
