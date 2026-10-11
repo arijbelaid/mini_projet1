@@ -82,7 +82,7 @@ kubectl config set-context --current --namespace=mp1-arij
 echo "*.bak" > .gitignore
 ```
 
-![Namespace créé](screenshots/etape0-01-namespace.png)
+![Namespace créé](./screenshots/etape0-01-namespace.png)
 
 **Question — pourquoi isoler un projet dans un namespace ?**  
 Un namespace isole logiquement les ressources d'un projet dans un cluster partagé : pas de collision de noms, quotas et RBAC applicables, nettoyage facile (`kubectl delete namespace`).
