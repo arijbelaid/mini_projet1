@@ -176,6 +176,11 @@ curl.exe http://api.k3s.local/version
 **Question — pourquoi un Ingress plutôt que 2 NodePort ?**  
 Un seul point d'entrée (80/443), routage par nom d'hôte, TLS centralisable, pas de ports 30000-32767 exposés, plus propre et évolutif.
 
+
+**Figure 19** — Accès au frontend NGINX depuis le navigateur Windows via `http://web.k3s.local` :
+
+![Accès frontend navigateur](screenshots/fig19-frontend-navigateur.png)
+
 ---
 
 ## ÉTAPE 5 — Mise à jour sans coupure et rollback
